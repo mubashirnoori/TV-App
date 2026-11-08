@@ -22,6 +22,7 @@ final class AppEntry {
     Intent intent;
     Drawable icon;
     boolean available;
+    boolean extra; // any other installed app, listed under "All Apps"
 
     AppEntry(String id, String label, int kind, int color, String[] pkgs, String[] keys, String glyph) {
         this.id = id; this.label = label; this.kind = kind; this.color = color;
@@ -48,6 +49,8 @@ final class AppEntry {
         l.add(new AppEntry("prime", "Prime Video", EXTERNAL, 0xFF10222B,
                 new String[]{"com.amazon.amazonvideo.livingroom", "com.amazon.avod.thirdpartyclient"},
                 new String[]{"prime video"}, "P"));
+        l.add(new AppEntry("spotify", "Spotify", EXTERNAL, 0xFF0F2B1A,
+                new String[]{"com.spotify.tv.android", "com.spotify.music"}, new String[]{"=spotify"}, "S"));
         l.add(new AppEntry("vlc", "VLC", EXTERNAL, 0xFF2B1D10,
                 new String[]{"org.videolan.vlc"}, new String[]{"=vlc", "vlc for"}, "V"));
         l.add(new AppEntry("kids", "Kids Zone", KIDS, 0xFFE8741A, NONE, NONE, "\u2605"));

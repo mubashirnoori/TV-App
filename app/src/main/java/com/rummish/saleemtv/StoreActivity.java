@@ -38,7 +38,7 @@ import java.util.regex.Pattern;
  * Nothing is bundled. Android asks once to allow "Unknown sources".
  */
 public class StoreActivity extends Activity {
-    private static final int GH = 0, KODI = 1, VLC = 2;
+    private static final int GH = 0, KODI = 1, VLC = 2, PLAY = 3;
     private static final String[] A32 = {"armeabi-v7a", "armv7", "armeabi"};
     private static final String[] A64 = {"arm64-v8a", "armv8", "arm64", "aarch64"};
     private static final String[] X86 = {"x86"};
@@ -58,6 +58,9 @@ public class StoreActivity extends Activity {
                     "yuliskov/SmartTube", "github.com/yuliskov/SmartTube/releases",
                     new String[]{"com.teamsmart.videomanager.tv", "com.liskovsoft.smarttubetv.beta", "com.liskovsoft.smarttubetv"},
                     0xFFFF5A5A, 0xFFB3202A),
+            new App("Spotify (free)", "Music and podcasts. The free plan works - sign in or create a free account.", "🎵", PLAY,
+                    "com.spotify.tv.android", "play.google.com/store/apps/details?id=com.spotify.tv.android",
+                    new String[]{"com.spotify.tv.android", "com.spotify.music"}, 0xFF5BEA8A, 0xFF138A3E),
             new App("VLC", "Plays almost any video or audio file and network stream.", "🎬", VLC,
                     "https://get.videolan.org/vlc-android/", "videolan.org/vlc/download-android.html",
                     new String[]{"org.videolan.vlc"}, 0xFFFFA24D, 0xFFE8650A),
@@ -209,8 +212,40 @@ public class StoreActivity extends Activity {
         }
     }
 
+    /** Spotify is closed-source and has no public APK page, so it is installed from Google Play (or used in a browser). */
+    private void spotifyInstall(final App a) {
+        final String[] opts = {"Install from Google Play", "Use Spotify in a browser (open.spotify.com)"};
+        Util.dialog(this).setTitle("Get Spotify (free)")
+                .setItems(opts, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int w) {
+                        try {
+                            if (w == 0) {
+                                try {
+                                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + a.src))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                                } catch (Exception noPlay) {
+                                    // no Play Store on this box: try the Spotify phone app page in a browser, else explain
+                                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + a.src))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                                }
+                            } else {
+                                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com"))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                            }
+                        } catch (Exception e) {
+                            Util.dialog(StoreActivity.this).setTitle("Cannot open that here")
+                                    .setMessage("This box has no Google Play and no web browser. Install a browser first (TV Bro is in this store), "
+                                            + "then choose \"Use Spotify in a browser\". Turn on Settings > Launcher > Remote works in all apps "
+                                            + "if the page needs a mouse.")
+                                    .setPositiveButton("OK", null).show();
+                        }
+                    }
+                }).setNegativeButton("Cancel", null).show();
+    }
+
     private void confirmInstall(final App a) {
         if (busy) return;
+        if (a.kind == PLAY) { spotifyInstall(a); return; }
         Util.dialog(this).setTitle("Install " + a.name + "?")
                 .setMessage("It will be downloaded from its official release page (" + a.web + ") and installed on this box.\n\n"
                         + "If Android asks, allow \"Unknown sources\" for the installer.")

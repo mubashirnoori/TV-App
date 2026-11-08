@@ -74,6 +74,8 @@ PTCL button sends; if a button is missing, tell me the code and I will map it.
 
 - **Digital TV (the Faisal app):** install its APK once (USB stick > open **Files** tile > tap the .apk > allow Unknown sources). The **Digital TV** tile then appears automatically. To open it at power-up: Settings > Launcher > *On power-up open* > Digital TV. Its landscape/remote behaviour is whatever the app itself provides (see CHANGES.md, Update 6).
 
+- **New in 1.1.0:** pick any installed app for power-up, force landscape, remote cursor for touch-only apps, Spotify entry. See CHANGES.md, Update 7.
+
 ## 7. AirPlay - honest assessment
 There is **no AirPlay receiver in this APK** and I did not fake one. Reasons: AirPlay receiving needs the FairPlay handshake
 (reverse-engineered, not available as a maintained Android library), an mDNS/Bonjour responder, H.264 mirroring decode and AAC-ELD audio;

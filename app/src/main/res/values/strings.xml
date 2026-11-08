@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Rummish Saleem TV</string>
+    <string name="rc_label">Rummish remote cursor</string>
+    <string name="rc_desc">Lets the TV remote control touch-only apps with an on-screen cursor: arrows move it, OK taps, CH+/CH- scroll. It does not read or store anything on screen.</string>
 </resources>

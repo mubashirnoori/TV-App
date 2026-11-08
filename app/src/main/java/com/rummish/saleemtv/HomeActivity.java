@@ -56,8 +56,10 @@ public class HomeActivity extends Activity {
     private FrameLayout root;
     private ScrollView scroll;
     private View splash;
-    private LinearLayout rowApps, rowRecent, rowFav;
-    private View secRecent;
+    private LinearLayout rowApps, rowAll, rowRecent, rowFav;
+    private View secRecent, secAll;
+    private int pkgCount = -1;
+    private BroadcastReceiver pkgRx;
     private TextView wifiTv;
     private List<AppEntry> apps;
     private final Map<String, AppEntry> byId = new HashMap<>();
@@ -142,6 +144,8 @@ public class HomeActivity extends Activity {
 
         LinearLayout[] out = new LinearLayout[1];
         col.addView(section("Apps", out)); rowApps = out[0];
+        secAll = section("All Apps", out); col.addView(secAll); rowAll = out[0];
+        secAll.setVisibility(View.GONE);
         secRecent = section("Recently Used", out); col.addView(secRecent); rowRecent = out[0];
         col.addView(section("Favorites", out)); rowFav = out[0];
     }
@@ -390,15 +394,35 @@ public class HomeActivity extends Activity {
         if (isDestroyed()) return;
         String which = Prefs.sp(this).getString("start_app", "iptv");
         if ("home".equals(which)) return;
-        if ("digital".equals(which)) {
-            if (apps == null && tries < 10) {
+        if ("app".equals(which) || "digital".equals(which)) {
+            if ("digital".equals(which) && apps == null && tries < 10) { // legacy setting: wait for app detection
                 ui.postDelayed(new Runnable() { @Override public void run() { startupApp(tries + 1); } }, 400);
                 return;
             }
-            AppEntry e = byId.get("digital");
-            if (e != null && e.available && e.intent != null) {
-                try { Prefs.pushRecent(this, e.id); startActivity(e.intent); return; } catch (Exception ignored) { }
+            Intent li = null;
+            String pkg = Prefs.sp(this).getString("start_pkg", "");
+            String cls = Prefs.sp(this).getString("start_cls", "");
+            if ("app".equals(which) && pkg.length() > 0) {
+                try {
+                    if (cls.length() > 0) {
+                        li = new Intent(Intent.ACTION_MAIN).setClassName(pkg, cls)
+                                .addCategory(Intent.CATEGORY_LAUNCHER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        if (getPackageManager().resolveActivity(li, 0) == null) li = null;
+                    }
+                    if (li == null) {
+                        li = getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
+                        if (li == null) li = getPackageManager().getLaunchIntentForPackage(pkg);
+                        if (li != null) li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    }
+                } catch (Exception ignored) { li = null; }
+            } else if ("digital".equals(which)) {
+                AppEntry e = byId.get("digital");
+                if (e != null && e.available) li = e.intent;
             }
+            if (li != null) {
+                try { startActivity(li); return; } catch (Exception ignored) { }
+            }
+            // chosen app missing or failed to open -> fall through to Live TV
         }
         try { startActivity(new Intent(this, IptvActivity.class)); } catch (Exception ignored) { }
     }
@@ -415,6 +439,23 @@ public class HomeActivity extends Activity {
                     AppEntry x = it.next();
                     if (!x.available && x.kind != AppEntry.YTFREE) it.remove();
                 }
+                // Every other installed app (e.g. an APK installed from USB) also gets a tile with its real icon.
+                try {
+                    java.util.HashSet<String> used = new java.util.HashSet<>();
+                    for (AppEntry x : fresh) if (x.intent != null && x.intent.getComponent() != null) used.add(x.intent.getComponent().getPackageName());
+                    for (AppPicker.Item it : AppPicker.load(getApplicationContext())) {
+                        if (used.contains(it.pkg) || it.pkg.equals("com.android.settings")) continue;
+                        float[] hsv = {Math.abs(it.pkg.hashCode()) % 360, 0.45f, 0.28f};
+                        AppEntry x = new AppEntry("pkg:" + it.pkg, it.label, AppEntry.EXTERNAL, Color.HSVToColor(hsv),
+                                new String[]{it.pkg}, new String[0], it.label.substring(0, 1).toUpperCase());
+                        x.intent = new Intent(Intent.ACTION_MAIN).setClassName(it.pkg, it.cls)
+                                .addCategory(Intent.CATEGORY_LAUNCHER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        x.icon = it.icon;
+                        x.available = true;
+                        x.extra = true;
+                        fresh.add(x);
+                    }
+                } catch (Throwable ignored) { }
                 ui.post(new Runnable() {
                     @Override public void run() {
                         if (isDestroyed()) return;
@@ -464,7 +505,9 @@ public class HomeActivity extends Activity {
 
     private void buildAppsRow() {
         rowApps.removeAllViews();
-        for (AppEntry e : apps) addTile(rowApps, e);
+        rowAll.removeAllViews();
+        for (AppEntry e : apps) addTile(e.extra ? rowAll : rowApps, e);
+        secAll.setVisibility(rowAll.getChildCount() > 0 ? View.VISIBLE : View.GONE);
     }
 
     private void refreshDynamicRows() {
@@ -595,13 +638,8 @@ public class HomeActivity extends Activity {
             toast(!auto ? "Live TV will start automatically." : "The home screen will open first.");
         } });
         final String sa = Prefs.sp(this).getString("start_app", "iptv");
-        final boolean digOk = byId.get("digital") != null;
-        labels.add("On power-up open: " + Prefs.startLabel(sa) + "   (OK = change)");
-        acts.add(new Runnable() { public void run() {
-            String n = Prefs.nextStart(sa, digOk);
-            Prefs.sp(HomeActivity.this).edit().putString("start_app", n).apply();
-            toast("On power-up the box will open: " + Prefs.startLabel(n));
-        } });
+        labels.add("On power-up open: " + Prefs.startLabel(this, sa) + "   (OK = change)");
+        acts.add(new Runnable() { public void run() { chooseStartApp(); } });
         labels.add("Change wallpaper");
         acts.add(new Runnable() { public void run() {
             int n = (Prefs.sp(HomeActivity.this).getInt("wp", 0) + 1) % WallpaperView.THEMES.length;
@@ -633,6 +671,24 @@ public class HomeActivity extends Activity {
         Util.dialog(this).setTitle("Rummish Saleem TV")
                 .setItems(labels.toArray(new String[0]), (d, which) -> acts.get(which).run())
                 .setNegativeButton("Close", null).show();
+    }
+
+    /** Choose what opens when the TV turns on: Live TV, home screen only, or any installed app. */
+    private void chooseStartApp() {
+        final String[] opts = {"Live TV", "Home screen only", "Choose any installed app..."};
+        Util.dialog(this).setTitle("On power-up open")
+                .setItems(opts, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int w) {
+                        if (w == 0) { Prefs.setStartSimple(HomeActivity.this, "iptv"); toast("On power-up the box will open: Live TV"); }
+                        else if (w == 1) { Prefs.setStartSimple(HomeActivity.this, "home"); toast("On power-up the home screen stays open"); }
+                        else AppPicker.show(HomeActivity.this, "Open at power-up", new AppPicker.OnPick() {
+                            @Override public void picked(String pkg, String cls, String label) {
+                                Prefs.setStartApp(HomeActivity.this, pkg, cls, label);
+                                toast("On power-up the box will open: " + label);
+                            }
+                        });
+                    }
+                }).setNegativeButton("Close", null).show();
     }
 
     @SuppressWarnings("deprecation")
@@ -702,11 +758,29 @@ public class HomeActivity extends Activity {
             @Override public void onReceive(Context c, Intent i) { updateNet(); }
         };
         registerReceiver(netRx, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
+        // an app installed / removed / updated while we are visible shows up (or disappears) at once
+        pkgRx = new BroadcastReceiver() {
+            @Override public void onReceive(Context c, Intent i) {
+                ui.removeCallbacks(rescan);
+                ui.postDelayed(rescan, 1200);
+            }
+        };
+        IntentFilter pf = new IntentFilter();
+        pf.addAction(Intent.ACTION_PACKAGE_ADDED);
+        pf.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        pf.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        pf.addDataScheme("package");
+        registerReceiver(pkgRx, pf);
     }
+
+    private final Runnable rescan = new Runnable() {
+        @Override public void run() { if (!isDestroyed() && apps != null) resolveAsync(false); }
+    };
 
     @Override protected void onStop() {
         super.onStop();
         if (netRx != null) { unregisterReceiver(netRx); netRx = null; }
+        if (pkgRx != null) { unregisterReceiver(pkgRx); pkgRx = null; }
     }
 
     @Override protected void onResume() {
@@ -716,7 +790,12 @@ public class HomeActivity extends Activity {
         wall.setAnimated(Prefs.sp(this).getBoolean("wp_live", true));
         refreshWidgets();
         refreshDynamicRows();
-        if (apps != null && SystemClock.elapsedRealtime() - lastResolve > 15000) resolveAsync(false);
+        OrientationService.apply(this); // "Force landscape" overlay follows the saved setting (also after a reboot)
+        int cnt = -1;
+        try { cnt = getPackageManager().getInstalledApplications(0).size(); } catch (Exception ignored) { }
+        boolean changed = cnt != pkgCount;
+        pkgCount = cnt;
+        if (apps != null && (changed || SystemClock.elapsedRealtime() - lastResolve > 15000)) resolveAsync(false);
     }
 
     @Override protected void onDestroy() {

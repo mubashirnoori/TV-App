@@ -12,8 +12,8 @@ android {
         applicationId 'com.rummish.saleemtv'
         minSdk 25          // Android 7.1.x (your ZTE B760HS3)
         targetSdk 25       // behave exactly like the box's OS; no newer restrictions
-        versionCode 1
-        versionName '1.0.0'
+        versionCode 3
+        versionName '1.1.1'
     }
 
     signingConfigs {
@@ -30,7 +30,7 @@ android {
     buildTypes {
         release {
             minifyEnabled false     // keeps ExoPlayer reflection safe; APK stays small anyway
-            signingConfig = ((ksFile.exists() && ksPass) ? signingConfigs.release : signingConfigs.debug)
+               signingConfig = ((ksFile.exists() && ksPass) ? signingConfigs.release : signingConfigs.debug)
         }
     }
 

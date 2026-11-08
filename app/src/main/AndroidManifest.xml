@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
@@ -64,5 +65,19 @@
         <activity android:name=".KeyTestActivity" android:exported="false"
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|uiMode" />
+
+        <!-- Force landscape: invisible overlay window (needs "Display over other apps") -->
+        <service android:name=".OrientationService" android:exported="false" />
+
+        <!-- Remote cursor: D-pad mouse for touch-only apps (enable once in Android Settings > Accessibility) -->
+        <service android:name=".RemoteCursorService"
+            android:label="@string/rc_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/remote_cursor_service" />
+        </service>
     </application>
 </manifest>

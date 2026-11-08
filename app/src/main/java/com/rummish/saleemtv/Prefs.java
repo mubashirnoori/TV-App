@@ -32,17 +32,25 @@ final class Prefs {
         return added;
     }
 
-    // ---- "On power-up open": iptv (Live TV) | digital (Digital TV app) | home (stay on the home screen)
-    static String startLabel(String s) {
-        if ("digital".equals(s)) return "Digital TV";
+    // ---- "On power-up open": iptv (Live TV) | home (stay on the home screen) | app (any installed app, see start_pkg/start_cls/start_label)
+    static String startLabel(Context c, String s) {
         if ("home".equals(s)) return "Home screen only";
+        if ("app".equals(s) || "digital".equals(s)) {
+            String l = sp(c).getString("start_label", null);
+            if (l != null && l.length() > 0) return l;
+            return "digital".equals(s) ? "Digital TV" : "Chosen app";
+        }
         return "Live TV";
     }
 
-    static String nextStart(String cur, boolean digitalAvailable) {
-        if ("iptv".equals(cur)) return digitalAvailable ? "digital" : "home";
-        if ("digital".equals(cur)) return "home";
-        return "iptv";
+    /** Saves "open this installed app at power-up". */
+    static void setStartApp(Context c, String pkg, String cls, String label) {
+        sp(c).edit().putString("start_app", "app").putString("start_pkg", pkg)
+                .putString("start_cls", cls == null ? "" : cls).putString("start_label", label).apply();
+    }
+
+    static void setStartSimple(Context c, String which) {
+        sp(c).edit().putString("start_app", which).apply();
     }
 
     static void pushRecent(Context c, String id) {

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.ResolveInfo;
 import android.graphics.Canvas;
@@ -117,6 +118,12 @@ public class SettingsActivity extends Activity {
 
         select(0);
         side[0].requestFocus();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        OrientationService.apply(this);
+        if (sel == 3 && pane != null) { int keep = sel; sel = -1; select(keep); } // refresh permission / service status after returning from Android settings
     }
 
     // ---------- sidebar ----------
@@ -447,26 +454,78 @@ public class SettingsActivity extends Activity {
     }
 
     private void pageLauncher() {
-        final boolean digOk = getPackageManager().getLaunchIntentForPackage("com.fun.faisal") != null;
+        final SharedPreferences sp = Prefs.sp(this);
         LinearLayout pu = group("When the TV turns on");
-        row(pu, "\u23FB", 0xFF30D158, "On power-up open", Prefs.startLabel(Prefs.sp(this).getString("start_app", "iptv")), true, new Runnable() {
+        row(pu, "\u23FB", 0xFF30D158, "On power-up open", Prefs.startLabel(this, sp.getString("start_app", "iptv")), true, new Runnable() {
             @Override public void run() {
-                final java.util.List<String> keys = new java.util.ArrayList<String>();
-                final java.util.List<String> names = new java.util.ArrayList<String>();
-                keys.add("iptv"); names.add("Live TV");
-                if (digOk) { keys.add("digital"); names.add("Digital TV"); }
-                keys.add("home"); names.add("Home screen only");
+                final String[] names = {"Live TV", "Home screen only", "Choose any installed app..."};
                 Util.dialog(SettingsActivity.this).setTitle("On power-up open")
-                        .setItems(names.toArray(new String[0]), new android.content.DialogInterface.OnClickListener() {
+                        .setItems(names, new android.content.DialogInterface.OnClickListener() {
                             @Override public void onClick(android.content.DialogInterface d, int w) {
-                                Prefs.sp(SettingsActivity.this).edit().putString("start_app", keys.get(w)).apply();
-                                int keep = sel;
-                                sel = -1; select(keep);
+                                if (w == 0) { Prefs.setStartSimple(SettingsActivity.this, "iptv"); rebuild(); }
+                                else if (w == 1) { Prefs.setStartSimple(SettingsActivity.this, "home"); rebuild(); }
+                                else AppPicker.show(SettingsActivity.this, "Open at power-up", new AppPicker.OnPick() {
+                                    @Override public void picked(String pkg, String cls, String label) {
+                                        Prefs.setStartApp(SettingsActivity.this, pkg, cls, label);
+                                        toast("Power-up app: " + label);
+                                        rebuild();
+                                    }
+                                });
                             }
                         }).show();
             }
         });
-        if (!digOk) info(pu, "Digital TV", "Not installed on this box");
+        info(pu, "Tip", "Pick any app installed on this TV");
+
+        LinearLayout ap = group("All apps");
+        int fo = OrientationService.mode(this);
+        row(ap, "\uD83D\uDCFA", 0xFF0A84FF, "Force landscape (TV display) for every app",
+                fo == 1 ? "Landscape" : (fo == 2 ? "Landscape flipped" : "Off"), true, new Runnable() {
+            @Override public void run() {
+                final String[] names = {"Off (each app decides)", "Landscape", "Landscape flipped (upside down)"};
+                Util.dialog(SettingsActivity.this).setTitle("Force landscape")
+                        .setItems(names, new android.content.DialogInterface.OnClickListener() {
+                            @Override public void onClick(android.content.DialogInterface d, int w) {
+                                sp.edit().putInt("force_orient", w).apply();
+                                if (w != 0 && !OrientationService.canDraw(SettingsActivity.this)) askOverlayPermission();
+                                OrientationService.apply(SettingsActivity.this);
+                                rebuild();
+                            }
+                        }).show();
+            }
+        });
+        info(ap, "Landscape needs", OrientationService.canDraw(this) ? "Permission granted" : "\"Display over other apps\" permission");
+        switchRow(ap, "\uD83D\uDD79", 0xFF5E5CE6, "Remote works in all apps (on-screen cursor)", sp.getBoolean("rc_on", false), new BoolCb() {
+            @Override public void on(boolean v) {
+                sp.edit().putBoolean("rc_on", v).apply();
+                if (v && !RemoteCursorService.isEnabled(SettingsActivity.this)) askAccessibility();
+                rebuild();
+            }
+        });
+        info(ap, "Cursor service", RemoteCursorService.isEnabled(this) ? "Enabled" : "Not enabled yet (Android Settings > Accessibility)");
+        if (!RemoteCursorService.isEnabled(this)) {
+            row(ap, "\u2699", 0xFF8E8E93, "Open Accessibility settings", null, true, new Runnable() {
+                @Override public void run() { askAccessibility(); }
+            });
+        }
+        row(ap, "\uD83C\uDFAF", 0xFF30B0C7, "Cursor mode",
+                "auto".equals(sp.getString("rc_mode", "toggle")) ? "Automatic" : "Button switches it", true, new Runnable() {
+            @Override public void run() {
+                final String[] names = {"Button switches the cursor on/off", "Automatic (on when the app has no remote focus)"};
+                Util.dialog(SettingsActivity.this).setTitle("Cursor mode")
+                        .setItems(names, new android.content.DialogInterface.OnClickListener() {
+                            @Override public void onClick(android.content.DialogInterface d, int w) {
+                                sp.edit().putString("rc_mode", w == 1 ? "auto" : "toggle").apply();
+                                rebuild();
+                            }
+                        }).show();
+            }
+        });
+        row(ap, "\uD83D\uDD18", 0xFFFF9F0A, "Cursor on/off button", KeyEvent.keyCodeToString(RemoteCursorService.toggleKey(this)).replace("KEYCODE_", ""), true, new Runnable() {
+            @Override public void run() { captureToggleKey(); }
+        });
+        info(ap, "How to use", "Arrows move, OK clicks, CH+/CH- scroll");
+
         LinearLayout g = group("Home screen");
         row(g, "🏠", 0xFFFF9F0A, "Make this the default home screen", null, true, new Runnable() {
             @Override public void run() {
@@ -490,6 +549,61 @@ public class SettingsActivity extends Activity {
         row(t, "🎮", 0xFF5E5CE6, "Remote key tester", "Shows each button's code", true, new Runnable() {
             @Override public void run() { startActivity(new Intent(SettingsActivity.this, KeyTestActivity.class)); }
         });
+    }
+
+    private void rebuild() {
+        int keep = sel;
+        sel = -1;
+        select(keep);
+        if (firstRow != null) firstRow.requestFocus();
+    }
+
+    private void askOverlayPermission() {
+        try {
+            startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + getPackageName()))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            toast("Allow \"Display over other apps\" for Rummish Saleem TV, then come back.");
+        } catch (Exception e) {
+            Util.dialog(this).setTitle("Permission needed")
+                    .setMessage("This box has no screen for \"Display over other apps\". Grant it once from a PC with ADB:\n\n"
+                            + "adb shell pm grant " + getPackageName() + " android.permission.SYSTEM_ALERT_WINDOW\n\n"
+                            + "(or: adb shell appops set " + getPackageName() + " SYSTEM_ALERT_WINDOW allow)")
+                    .setPositiveButton("OK", null).show();
+        }
+    }
+
+    private void askAccessibility() {
+        String cn = getPackageName() + "/" + RemoteCursorService.class.getName();
+        Util.dialog(this).setTitle("Turn on the remote cursor")
+                .setMessage("Open Accessibility settings and switch on \"Rummish remote cursor\".\n\n"
+                        + "If this box has no Accessibility screen, enable it from a PC with ADB:\n\n"
+                        + "adb shell settings put secure enabled_accessibility_services " + cn + "\n"
+                        + "adb shell settings put secure accessibility_enabled 1")
+                .setPositiveButton("Open settings", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int w) { safeStart(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
+                })
+                .setNegativeButton("Later", null).show();
+    }
+
+    /** "Press the remote button you want to use" capture dialog. BACK cancels. */
+    private void captureToggleKey() {
+        final android.app.AlertDialog d = Util.dialog(this).setTitle("Cursor on/off button")
+                .setMessage("Press the remote button you want to use.\n(Press BACK to cancel.)")
+                .setNegativeButton("Cancel", null).create();
+        d.setOnKeyListener(new android.content.DialogInterface.OnKeyListener() {
+            @Override public boolean onKey(android.content.DialogInterface di, int code, KeyEvent ev) {
+                if (ev.getAction() != KeyEvent.ACTION_DOWN) return false;
+                if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN
+                        || code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT
+                        || code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_HOME) return false;
+                Prefs.sp(SettingsActivity.this).edit().putInt("rc_key", code).apply();
+                d.dismiss();
+                toast("Cursor button: " + KeyEvent.keyCodeToString(code).replace("KEYCODE_", ""));
+                rebuild();
+                return true;
+            }
+        });
+        d.show();
     }
 
     private void openOtherLauncher() {
