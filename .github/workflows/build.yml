@@ -1,0 +1,37 @@
+name: Build signed APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v3
+        with: { gradle-version: '8.4' }
+      - name: Prepare signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > app/release.jks
+            echo "::add-mask::$KEYSTORE_PASSWORD"
+            echo "KS_PASS=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+          else
+            P=$(openssl rand -hex 12)
+            echo "::add-mask::$P"
+            keytool -genkeypair -keystore app/release.jks -alias rummish -keyalg RSA -keysize 2048 \
+              -validity 10000 -storepass "$P" -keypass "$P" \
+              -dname "CN=Rummish Saleem TV, O=Rummish Saleem, C=PK"
+            echo "KS_PASS=$P" >> $GITHUB_ENV
+            echo "::warning::No KEYSTORE secrets set: a one-off key was generated."
+          fi
+      - run: gradle assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RummishSaleemTV-release-apk
+          path: app/build/outputs/apk/release/*.apk
