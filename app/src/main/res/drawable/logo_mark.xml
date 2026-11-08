@@ -1,0 +1,8 @@
+<!-- NEUTRAL PLACEHOLDER MARK. Replace with a logo you are licensed to use (see README). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp" android:height="96dp"
+    android:viewportWidth="96" android:viewportHeight="96">
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd"
+        android:pathData="M48,8 A40,40 0 1,0 48,88 A40,40 0 1,0 48,8 Z M48,16 A32,32 0 1,1 48,80 A32,32 0 1,1 48,16 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M40,34 L40,62 L64,48 Z" />
+</vector>

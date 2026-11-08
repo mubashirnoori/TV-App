@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="#000000">
+
+    <SurfaceView android:id="@+id/surface"
+        android:layout_width="match_parent" android:layout_height="match_parent" />
+
+    <TextView android:id="@+id/status"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="center" android:gravity="center"
+        android:textColor="#FFFFFF" android:background="#B0000000"
+        android:visibility="gone" />
+
+    <TextView android:id="@+id/info"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_gravity="bottom" android:textColor="#FFFFFF"
+        android:background="#CC000000" android:visibility="gone" />
+
+    <LinearLayout android:id="@+id/panel"
+        android:layout_width="wrap_content" android:layout_height="match_parent"
+        android:orientation="vertical" android:background="#EE101014">
+
+        <TextView android:id="@+id/title"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textColor="#FFFFFF" android:singleLine="true" />
+
+        <EditText android:id="@+id/search"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:hint="Search channels" android:singleLine="true"
+            android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF"
+            android:imeOptions="actionSearch" android:inputType="text" />
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="1" android:orientation="horizontal">
+            <ListView android:id="@+id/catList"
+                android:layout_width="0dp" android:layout_height="match_parent"
+                android:layout_weight="2" android:divider="@null" />
+            <ListView android:id="@+id/chList"
+                android:layout_width="0dp" android:layout_height="match_parent"
+                android:layout_weight="3" android:divider="@null" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

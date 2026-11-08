@@ -1,0 +1,52 @@
+plugins { id 'com.android.application' }
+
+def ksFile = file('release.jks')
+// Keystore password: -PKS_PASS=... or environment variable KS_PASS (never committed)
+def ksPass = project.findProperty('KS_PASS') ?: System.getenv('KS_PASS')
+
+android {
+    namespace 'com.rummish.saleemtv'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.rummish.saleemtv'
+        minSdk 25          // Android 7.1.x (your ZTE B760HS3)
+        targetSdk 25       // behave exactly like the box's OS; no newer restrictions
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        release {
+            if (ksFile.exists() && ksPass) {
+                storeFile ksFile
+                storePassword ksPass
+                keyAlias 'rummish'
+                keyPassword ksPass
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false     // keeps ExoPlayer reflection safe; APK stays small anyway
+            signingConfig (ksFile.exists() && ksPass) ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    // Only dependencies: ExoPlayer core + HLS (min API 16, works on Android 7.1.2)
+    implementation 'com.google.android.exoplayer:exoplayer-core:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
+}
