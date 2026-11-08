@@ -30,7 +30,7 @@ android {
     buildTypes {
         release {
             minifyEnabled false     // keeps ExoPlayer reflection safe; APK stays small anyway
-            signingConfig (ksFile.exists() && ksPass) ? signingConfigs.release : signingConfigs.debug
+      signingConfig = ((ksFile.exists() && ksPass) ? signingConfigs.release : signingConfigs.debug)
         }
     }
 
