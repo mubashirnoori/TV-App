@@ -6,28 +6,61 @@
     <SurfaceView android:id="@+id/surface"
         android:layout_width="match_parent" android:layout_height="match_parent" />
 
+    <!-- toast-style status (loading / buffering / errors) -->
     <TextView android:id="@+id/status"
         android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_gravity="center" android:gravity="center"
-        android:textColor="#FFFFFF" android:background="#B0000000"
+        android:textColor="#FFFFFF" android:background="@drawable/bg_toast"
         android:visibility="gone" />
 
-    <TextView android:id="@+id/info"
-        android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:layout_gravity="bottom" android:textColor="#FFFFFF"
-        android:background="#CC000000" android:visibility="gone" />
+    <!-- channel number typed with the remote -->
+    <TextView android:id="@+id/numTv"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="top|end" android:textColor="#FFFFFF"
+        android:background="@drawable/bg_toast" android:visibility="gone" />
 
+    <!-- now-playing banner -->
+    <LinearLayout android:id="@+id/infoBar"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_gravity="bottom" android:orientation="horizontal"
+        android:gravity="center_vertical" android:background="@drawable/bg_info"
+        android:visibility="gone">
+        <ImageView android:id="@+id/infoLogo"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:background="@drawable/bg_logo" android:scaleType="fitCenter" />
+        <TextView android:id="@+id/infoNum"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#FFD60A" android:singleLine="true" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical">
+            <TextView android:id="@+id/infoName"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="#FFFFFF" android:singleLine="true" />
+            <TextView android:id="@+id/infoEpg"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="#CCFFFFFF" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- channel browser: opened with OK / Left / Right, closed with Back -->
     <LinearLayout android:id="@+id/panel"
         android:layout_width="wrap_content" android:layout_height="match_parent"
-        android:orientation="vertical" android:background="#EE101014">
+        android:orientation="vertical" android:background="@drawable/bg_panel"
+        android:visibility="gone">
 
         <TextView android:id="@+id/title"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:textColor="#FFFFFF" android:singleLine="true" />
 
+        <TextView android:id="@+id/hint"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textColor="#99FFFFFF" android:singleLine="true"
+            android:text="OK play   •   RED favorite   •   MENU sources   •   0-9 channel number" />
+
         <EditText android:id="@+id/search"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:hint="Search channels" android:singleLine="true"
+            android:background="@drawable/bg_search"
             android:textColor="#FFFFFF" android:textColorHint="#80FFFFFF"
             android:imeOptions="actionSearch" android:inputType="text" />
 

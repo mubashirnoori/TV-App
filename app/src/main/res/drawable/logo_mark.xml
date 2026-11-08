@@ -1,8 +1,10 @@
-<!-- NEUTRAL PLACEHOLDER MARK. Replace with a logo you are licensed to use (see README). -->
+<!-- Rummish Saleem TV mark: an original rounded-screen TV with a play button. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="96dp" android:height="96dp"
     android:viewportWidth="96" android:viewportHeight="96">
     <path android:fillColor="#FFFFFF" android:fillType="evenOdd"
-        android:pathData="M48,8 A40,40 0 1,0 48,88 A40,40 0 1,0 48,8 Z M48,16 A32,32 0 1,1 48,80 A32,32 0 1,1 48,16 Z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M40,34 L40,62 L64,48 Z" />
+        android:pathData="M24,14 H72 A12,12 0 0 1 84,26 V58 A12,12 0 0 1 72,70 H24 A12,12 0 0 1 12,58 V26 A12,12 0 0 1 24,14 Z M25,19.5 H71 A7.5,7.5 0 0 1 78.5,27 V57 A7.5,7.5 0 0 1 71,64.5 H25 A7.5,7.5 0 0 1 17.5,57 V27 A7.5,7.5 0 0 1 25,19.5 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M41,31 L41,53 L61,42 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M44,70 H52 V77 H44 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M31,77 H65 A3,3 0 0 1 65,83 H31 A3,3 0 0 1 31,77 Z" />
 </vector>

@@ -14,7 +14,7 @@ import java.util.Locale;
 
 /** One home-screen tile. External apps are detected from what is really installed. */
 final class AppEntry {
-    static final int EXTERNAL = 0, IPTV = 1, KIDS = 2, SETTINGS = 3, AIRPLAY = 4;
+    static final int EXTERNAL = 0, IPTV = 1, KIDS = 2, SETTINGS = 3, AIRPLAY = 4, FILES = 5, YTFREE = 6, STORE = 7;
 
     final String id, label, glyph;
     final int kind, color;
@@ -32,25 +32,33 @@ final class AppEntry {
 
     static List<AppEntry> catalog() {
         List<AppEntry> l = new ArrayList<>();
+        l.add(new AppEntry("iptv", "Live TV", IPTV, 0xFF0A4FA8, NONE, NONE, "LIVE"));
+        // "Digital TV" = the operator's streaming app (package com.fun.faisal, label "Faisal"). We only launch it; the app itself is untouched.
+        l.add(new AppEntry("digital", "Digital TV", EXTERNAL, 0xFF0B7A5C,
+                new String[]{"com.fun.faisal"}, new String[]{"=faisal"}, "D"));
+        l.add(new AppEntry("ytfree", "YouTube No Ads", YTFREE, 0xFFB3202A,
+                new String[]{"com.teamsmart.videomanager.tv", "com.liskovsoft.smarttubetv.beta", "com.liskovsoft.smarttubetv"},
+                new String[]{"smarttube"}, "\u25B6"));
         l.add(new AppEntry("youtube", "YouTube", EXTERNAL, 0xFF2B1416,
                 new String[]{"com.google.android.youtube.tv", "com.google.android.youtube"}, new String[]{"=youtube"}, "\u25B6"));
         l.add(new AppEntry("netflix", "Netflix", EXTERNAL, 0xFF1A1A1C,
                 new String[]{"com.netflix.ninja", "com.netflix.mediaclient"}, new String[]{"=netflix"}, "N"));
         l.add(new AppEntry("tapmad", "Tapmad", EXTERNAL, 0xFF14202B, NONE, new String[]{"tapmad"}, "T"));
         l.add(new AppEntry("tamasha", "Tamasha", EXTERNAL, 0xFF241A2B, NONE, new String[]{"tamasha"}, "T"));
-        l.add(new AppEntry("iptv", "IPTV Player", IPTV, 0xFF0A4FA8, NONE, NONE, "LIVE"));
-        l.add(new AppEntry("vlc", "VLC", EXTERNAL, 0xFF2B1D10,
-                new String[]{"org.videolan.vlc"}, new String[]{"=vlc", "vlc for"}, "V"));
         l.add(new AppEntry("prime", "Prime Video", EXTERNAL, 0xFF10222B,
                 new String[]{"com.amazon.amazonvideo.livingroom", "com.amazon.avod.thirdpartyclient"},
                 new String[]{"prime video"}, "P"));
+        l.add(new AppEntry("vlc", "VLC", EXTERNAL, 0xFF2B1D10,
+                new String[]{"org.videolan.vlc"}, new String[]{"=vlc", "vlc for"}, "V"));
+        l.add(new AppEntry("kids", "Kids Zone", KIDS, 0xFFE8741A, NONE, NONE, "\u2605"));
+        l.add(new AppEntry("files", "Files", FILES, 0xFF2D5BD0, NONE, NONE, "\uD83D\uDCC1"));
+        l.add(new AppEntry("store", "App Store", STORE, 0xFF1B6EF3, NONE, NONE, "\uD83D\uDCE5"));
         l.add(new AppEntry("chrome", "Chrome", EXTERNAL, 0xFF1C1C1E,
                 new String[]{"com.android.chrome"}, new String[]{"=chrome", "browser"}, "C"));
-        l.add(new AppEntry("kids", "Kids Zone", KIDS, 0xFFE8741A, NONE, NONE, "\u2605"));
-        l.add(new AppEntry("settings", "Settings", SETTINGS, 0xFF2C2C2E, NONE, NONE, "S"));
         l.add(new AppEntry("airplay", "AirPlay", AIRPLAY, 0xFF1D2B24,
                 new String[]{"com.ionitech.airscreen"},
                 new String[]{"airscreen", "airplay", "airreceiver", "air receiver", "letsview"}, "\u25B2"));
+        l.add(new AppEntry("settings", "Settings", SETTINGS, 0xFF2C2C2E, NONE, NONE, "S"));
         return l;
     }
 
@@ -65,12 +73,12 @@ final class AppEntry {
         String self = c.getPackageName();
 
         for (AppEntry e : list) {
-            if (e.kind == IPTV || e.kind == KIDS) { e.available = true; continue; }
+            if (e.kind == IPTV || e.kind == KIDS || e.kind == FILES || e.kind == STORE) { e.available = true; continue; }
             if (e.kind == SETTINGS) {
                 Intent si = new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 ResolveInfo r = pm.resolveActivity(si, 0);
                 e.intent = si;
-                e.available = r != null;
+                e.available = true; // our own Settings app always opens
                 if (r != null) e.icon = r.loadIcon(pm);
                 continue;
             }

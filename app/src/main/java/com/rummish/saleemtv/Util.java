@@ -2,7 +2,9 @@ package com.rummish.saleemtv;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
+import android.os.StrictMode;
 import android.text.InputType;
 import android.util.DisplayMetrics;
 import android.widget.EditText;
@@ -28,6 +30,18 @@ final class Util {
     static void init(Context c) {
         DisplayMetrics m = c.getResources().getDisplayMetrics();
         S = Math.min(m.widthPixels, m.heightPixels) / 1080f;
+    }
+
+    static int mix(int a, int b, float t) {
+        return Color.argb(255,
+                Math.round(Color.red(a) * (1 - t) + Color.red(b) * t),
+                Math.round(Color.green(a) * (1 - t) + Color.green(b) * t),
+                Math.round(Color.blue(a) * (1 - t) + Color.blue(b) * t));
+    }
+
+    /** Android 7 refuses file:// Uris in intents (FileUriExposedException). Needed to open files / install an APK without FileProvider. */
+    static void allowFileUris() {
+        try { StrictMode.class.getMethod("disableDeathOnFileUriExposure").invoke(null); } catch (Throwable ignored) { }
     }
 
     static int px(float v) { return Math.round(v * S); }
@@ -57,8 +71,24 @@ final class Util {
     }
 
     /** Downloads (or copies a local path) to dest, following http<->https redirects, size-capped. */
-    static void download(String url, File dest, long max) throws IOException {
+    interface Progress { boolean on(long done, long total); } // return false to cancel
+
+    static void download(String url, File dest, long max) throws IOException { download(url, dest, max, null); }
+
+    static String readText(File f) throws IOException {
+        InputStream in = openMaybeGzip(f);
+        try {
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[8192];
+            int n;
+            while ((n = in.read(b)) > 0) bo.write(b, 0, n);
+            return bo.toString("UTF-8");
+        } finally { in.close(); }
+    }
+
+    static void download(String url, File dest, long max, Progress pr) throws IOException {
         File tmp = new File(dest.getPath() + ".tmp");
+        long total = -1, lastTick = 0;
         InputStream in = null;
         HttpURLConnection c = null;
         try {
@@ -86,6 +116,7 @@ final class Util {
                 }
                 if (c == null || code != 200) throw new IOException("HTTP " + code);
                 in = c.getInputStream();
+                total = c.getContentLength();
             }
             OutputStream out = new BufferedOutputStream(new FileOutputStream(tmp));
             try {
@@ -96,6 +127,13 @@ final class Util {
                     tot += n;
                     if (tot > max) throw new IOException("File too large");
                     out.write(buf, 0, n);
+                    if (pr != null) {
+                        long now = android.os.SystemClock.elapsedRealtime();
+                        if (now - lastTick > 400) {
+                            lastTick = now;
+                            if (!pr.on(tot, total)) throw new IOException("Cancelled");
+                        }
+                    }
                 }
             } finally {
                 out.close();

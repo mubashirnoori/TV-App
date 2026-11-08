@@ -28,11 +28,11 @@ public class LearnActivity extends Activity implements TextToSpeech.OnInitListen
 
     private static final String[] WORDS = {"Apple", "Ball", "Cat", "Dog", "Elephant", "Fish", "Grapes", "Hat", "Ice cream",
             "Juice", "Key", "Lion", "Moon", "Nose", "Orange", "Pizza", "Queen", "Rabbit", "Sun", "Tree", "Umbrella",
-            "Van", "Watch", "Xylophone", "Yacht", "Zebra"};
+            "Van", "Watch", "Xylophone", "Yacht", "Zoo"};
     private static final String[] EMOJI = {"\uD83C\uDF4E", "\u26BD", "\uD83D\uDC31", "\uD83D\uDC36", "\uD83D\uDC18", "\uD83D\uDC1F",
             "\uD83C\uDF47", "\uD83C\uDFA9", "\uD83C\uDF66", "\uD83C\uDF79", "\uD83D\uDD11", "\uD83E\uDD81", "\uD83C\uDF19",
             "\uD83D\uDC43", "\uD83C\uDF4A", "\uD83C\uDF55", "\uD83D\uDC78", "\uD83D\uDC30", "\u2600", "\uD83C\uDF33", "\u2602",
-            "\uD83D\uDE90", "\u231A", "\uD83C\uDFBC", "\u26F5", "\uD83E\uDD93"};
+            "\uD83D\uDE90", "\u231A", "\uD83C\uDFBC", "\u26F5", "\uD83D\uDC12"};
     private static final String[] URDU = {"\u0627", "\u0628", "\u067E", "\u062A", "\u0679", "\u062B", "\u062C", "\u0686", "\u062D",
             "\u062E", "\u062F", "\u0688", "\u0630", "\u0631", "\u0691", "\u0632", "\u0698", "\u0633", "\u0634", "\u0635",
             "\u0636", "\u0637", "\u0638", "\u0639", "\u063A", "\u0641", "\u0642", "\u06A9", "\u06AF", "\u0644", "\u0645",

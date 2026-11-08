@@ -70,6 +70,10 @@ PTCL button sends; if a button is missing, tell me the code and I will map it.
   The *real* boot logo (bootloader `logo` partition) and `bootanimation.zip` need root or a signed firmware flash; wrong writes can
   brick the box, so this project does not touch them. Only PTCL/ZTE can supply a legitimate firmware change.
 
+- **Live wallpaper & widgets (home screen):** slow-moving aurora background plus Continue-watching / Weather / This-box cards. Both can be switched off (Menu, or Settings > Display & Sound). Weather needs internet; city is set in Settings.
+
+- **Digital TV (the Faisal app):** install its APK once (USB stick > open **Files** tile > tap the .apk > allow Unknown sources). The **Digital TV** tile then appears automatically. To open it at power-up: Settings > Launcher > *On power-up open* > Digital TV. Its landscape/remote behaviour is whatever the app itself provides (see CHANGES.md, Update 6).
+
 ## 7. AirPlay - honest assessment
 There is **no AirPlay receiver in this APK** and I did not fake one. Reasons: AirPlay receiving needs the FairPlay handshake
 (reverse-engineered, not available as a maintained Android library), an mDNS/Bonjour responder, H.264 mirroring decode and AAC-ELD audio;
@@ -93,7 +97,6 @@ if the box also runs Google Cast (the PTCL box may not). Open-source receivers (
 3. PTCL's Home key handling may force its own launcher on boot; some operator firmwares ignore third-party HOME apps.
 4. Emoji/Urdu glyph rendering depends on the box fonts.
 
-## 10. Logo / trademark
-`drawable/logo_mark.xml` is a **neutral placeholder** because I cannot supply or license Apple's logo. The splash text "Apple TV" was requested,
-but "Apple" and "Apple TV" are Apple trademarks: fine for private personal use, but do not distribute or sell the app with Apple's name/logo.
-Swap the drawable for an asset you are licensed to use; consider a different public-facing name.
+## 10. Logo
+`drawable/logo_mark.xml` is an original mark (rounded-screen TV with a play button). The splash shows "Rummish Saleem TV" with it;
+no Apple name or logo is used anywhere. Replace the drawable to change the mark everywhere (splash, launcher icon, banner).

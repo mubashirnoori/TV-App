@@ -1,8 +1,10 @@
 package com.rummish.saleemtv;
 
 import android.app.Activity;
+import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -10,6 +12,7 @@ import android.os.Process;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -19,15 +22,17 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.view.SurfaceView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
-import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
@@ -49,16 +54,21 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** Lightweight live-TV player: M3U/M3U8 + Xtream Codes, categories, favorites, search, EPG now/next. */
+/**
+ * Live TV. Starts playing automatically (last watched channel, else the first one).
+ * UP/DOWN or CH+/CH- change channel, 0-9 types a channel number, OK/LEFT/RIGHT opens the channel browser.
+ */
 public class IptvActivity extends Activity {
-    static final String EXTRA_URL = "url", EXTRA_TITLE = "title", EXTRA_KIDS = "kids";
+    static final String EXTRA_URL = "url", EXTRA_TITLE = "title", EXTRA_KIDS = "kids", EXTRA_FILTER = "filter";
 
-    private static final String FAV = "\u2605 Favorites";
+    private static final String FAV = "★ Favorites";
     private static final int MAX_CH = 3000;
     private static final String B = "https://iptv-org.github.io/iptv/";
     // Community-maintained, publicly listed free-to-air/free streams (iptv-org). Availability varies.
     static final String[][] PRESETS = {
             {"Pakistan", B + "countries/pk.m3u"},
+            {"Urdu channels", B + "languages/urd.m3u"},
+            {"Free-TV (open source)", "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8"},
             {"News (International)", B + "categories/news.m3u"},
             {"Sports", B + "categories/sports.m3u"},
             {"Entertainment", B + "categories/entertainment.m3u"},
@@ -67,29 +77,31 @@ public class IptvActivity extends Activity {
             {"Music", B + "categories/music.m3u"},
             {"International (General)", B + "categories/general.m3u"}};
 
+    private static final int[] BADGE = {0xFF3B82F6, 0xFF8B5CF6, 0xFFEC4899, 0xFFF97316, 0xFF10B981, 0xFF06B6D4, 0xFFEF4444, 0xFF6366F1};
+    private static final String UA = "RummishSaleemTV/1.0 (Android TV)";
+    private static final int MAX_RETRIES = 2, MAX_SKIP = 8;
+
     private final Handler ui = new Handler(Looper.getMainLooper());
     private SurfaceView surface;
-    private View panel;
+    private View panel, infoBar;
     private ListView catList, chList;
     private EditText search;
-    private TextView title, status, info;
+    private TextView title, hint, status, numTv, infoNum, infoName, infoEpg;
+    private ImageView infoLogo;
 
-    private static final String UA = "RummishSaleemTV/1.0 (Android TV)";
-    private static final int MAX_RETRIES = 3;
     private ExoPlayer player;
     private DefaultHttpDataSource.Factory httpFactory;
-    private int retries;
-    private boolean forceHls, okLongDone;
-    private final Runnable retryRun = new Runnable() { public void run() {
-        if (!destroyed && current != null) startPlayback(current);
-    } };
     private boolean kids, destroyed;
     private int loadGen;
     private String srcName = "", srcUrl = "";
     private String catSel = "";        // "" = all, FAV = favorites, else group name
     private String query = "";
+    private String presetFilter = "";  // name filter given by the caller (Kids "Islamic"), "a|b|c"
     private Channel current;
     private boolean everStarted;
+    private int retries, skipCount;
+    private boolean forceHls, okLongDone, autoSkipping;
+    private final StringBuilder numBuf = new StringBuilder();
 
     private final List<Channel> all = new ArrayList<>(), shown = new ArrayList<>();
     private final List<String> catKeys = new ArrayList<>();
@@ -98,9 +110,28 @@ public class IptvActivity extends Activity {
     private volatile Map<String, EpgLoader.Epg> epg = new HashMap<>();
     private ChannelAdapter chAdapter;
     private CatAdapter catAdapter;
+    private Drawable selBg;
 
-    private final Runnable hideInfo = new Runnable() { public void run() { info.setVisibility(View.GONE); } };
+    private final Runnable hideInfo = new Runnable() { public void run() { infoBar.setVisibility(View.GONE); } };
     private final Runnable hideStatus = new Runnable() { public void run() { status.setVisibility(View.GONE); } };
+    private final Runnable retryRun = new Runnable() { public void run() {
+        if (!destroyed && current != null) startPlayback(current);
+    } };
+    private final Runnable skipRun = new Runnable() { public void run() {
+        if (destroyed) return;
+        autoSkipping = true;
+        try { zap(1); } finally { autoSkipping = false; }
+    } };
+    private final Runnable numCommit = new Runnable() { public void run() {
+        String s = numBuf.toString();
+        numBuf.setLength(0);
+        numTv.setVisibility(View.GONE);
+        try {
+            int n = Integer.parseInt(s);
+            if (n >= 1 && n <= shown.size()) play(shown.get(n - 1));
+            else showStatus("No channel " + n, 2000);
+        } catch (NumberFormatException ignored) { }
+    } };
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -109,30 +140,60 @@ public class IptvActivity extends Activity {
         setContentView(R.layout.activity_iptv);
         surface = (SurfaceView) findViewById(R.id.surface);
         panel = findViewById(R.id.panel);
+        infoBar = findViewById(R.id.infoBar);
         catList = (ListView) findViewById(R.id.catList);
         chList = (ListView) findViewById(R.id.chList);
         search = (EditText) findViewById(R.id.search);
         title = (TextView) findViewById(R.id.title);
+        hint = (TextView) findViewById(R.id.hint);
         status = (TextView) findViewById(R.id.status);
-        info = (TextView) findViewById(R.id.info);
+        numTv = (TextView) findViewById(R.id.numTv);
+        infoNum = (TextView) findViewById(R.id.infoNum);
+        infoName = (TextView) findViewById(R.id.infoName);
+        infoEpg = (TextView) findViewById(R.id.infoEpg);
+        infoLogo = (ImageView) findViewById(R.id.infoLogo);
         kids = getIntent().getBooleanExtra(EXTRA_KIDS, false);
+        String pf = getIntent().getStringExtra(EXTRA_FILTER);
+        presetFilter = pf == null ? "" : pf.toLowerCase(Locale.ROOT);
 
-        panel.getLayoutParams().width = Math.round(Util.screenW(this) * 0.64f);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(40));
-        title.setPadding(Util.px(30), Util.px(24), Util.px(30), Util.px(6));
-        search.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(32));
-        search.setPadding(Util.px(30), Util.px(10), Util.px(30), Util.px(10));
+        panel.getLayoutParams().width = Math.round(Util.screenW(this) * 0.66f);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(42));
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setPadding(Util.px(34), Util.px(26), Util.px(30), Util.px(4));
+        hint.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(22));
+        hint.setPadding(Util.px(34), 0, Util.px(30), Util.px(12));
+        search.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(30));
+        search.setPadding(Util.px(26), Util.px(12), Util.px(26), Util.px(12));
+        ((LinearLayout.LayoutParams) search.getLayoutParams()).setMargins(Util.px(26), Util.px(4), Util.px(26), Util.px(14));
         status.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(34));
-        status.setPadding(Util.px(36), Util.px(20), Util.px(36), Util.px(20));
-        info.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(34));
-        info.setPadding(Util.px(60), Util.px(24), Util.px(60), Util.px(34));
+        status.setPadding(Util.px(44), Util.px(24), Util.px(44), Util.px(24));
+        numTv.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(90));
+        numTv.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        numTv.setPadding(Util.px(40), Util.px(10), Util.px(40), Util.px(10));
+        ((FrameLayout.LayoutParams) numTv.getLayoutParams()).setMargins(0, Util.px(50), Util.px(60), 0);
+        infoBar.setPadding(Util.px(70), Util.px(90), Util.px(70), Util.px(40));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Util.px(150), Util.px(100));
+        lp.rightMargin = Util.px(24);
+        infoLogo.setLayoutParams(lp);
+        infoLogo.setPadding(Util.px(10), Util.px(10), Util.px(10), Util.px(10));
+        infoNum.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(54));
+        infoNum.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        infoNum.setPadding(0, 0, Util.px(28), 0);
+        infoName.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(44));
+        infoName.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        infoEpg.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(28));
 
+        selBg = Util.round(0x33FFFFFF, Util.px(16));
         catAdapter = new CatAdapter();
         chAdapter = new ChannelAdapter();
         catList.setAdapter(catAdapter);
         chList.setAdapter(chAdapter);
-        catList.setSelector(new ColorDrawable(0x44FFFFFF));
-        chList.setSelector(new ColorDrawable(0x44FFFFFF));
+        catList.setSelector(Util.round(0x40FFFFFF, Util.px(16)));
+        chList.setSelector(Util.round(0x40FFFFFF, Util.px(16)));
+        catList.setPadding(Util.px(16), 0, Util.px(8), Util.px(20));
+        chList.setPadding(Util.px(8), 0, Util.px(16), Util.px(20));
+        catList.setClipToPadding(false);
+        chList.setClipToPadding(false);
 
         catList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
@@ -167,15 +228,14 @@ public class IptvActivity extends Activity {
             return false;
         });
 
-        // choose source
+        // choose source: explicit playlist (Kids card / file manager) or the last one used
         String u = getIntent().getStringExtra(EXTRA_URL);
-        if (kids) {
+        if (u != null) {
             loadSource(getIntent().getStringExtra(EXTRA_TITLE), u);
         } else {
             String ln = Prefs.sp(this).getString("last_src_name", null), lu = Prefs.sp(this).getString("last_src_url", null);
             if (ln != null && lu != null) loadSource(ln, lu); else loadSource(PRESETS[0][0], PRESETS[0][1]);
         }
-        chList.requestFocus();
     }
 
     // ---------- playlist loading ----------
@@ -184,7 +244,7 @@ public class IptvActivity extends Activity {
         srcUrl = url;
         if (!kids) Prefs.sp(this).edit().putString("last_src_name", srcName).putString("last_src_url", url).apply();
         title.setText(srcName);
-        showStatus("Loading playlist\u2026", 0);
+        showStatus("Loading playlist…", 0);
         final int gen = ++loadGen;
         new Thread(new Runnable() {
             @Override public void run() {
@@ -206,7 +266,8 @@ public class IptvActivity extends Activity {
                     @Override public void run() {
                         if (destroyed || gen != loadGen) return;
                         if (list == null) {
-                            showStatus("Could not load playlist (" + (fErr != null ? fErr : fPerr) + "). Check the internet connection or the playlist address.", 6000);
+                            showStatus("Could not load playlist (" + (fErr != null ? fErr : fPerr) + "). Check the internet connection or the playlist address.", 8000);
+                            showPanel();
                             return;
                         }
                         all.clear(); all.addAll(list);
@@ -215,15 +276,31 @@ public class IptvActivity extends Activity {
                         buildCategories();
                         catSel = "";
                         applyFilter();
-                        title.setText(srcName + "  \u00B7  " + all.size() + " channels");
-                        if (all.isEmpty()) showStatus("The playlist contains no playable entries.", 5000);
+                        title.setText(srcName + "  ·  " + all.size() + " channels");
+                        if (all.isEmpty()) { showStatus("The playlist contains no playable entries.", 6000); showPanel(); }
                         else if (cached) showStatus("Offline - showing saved copy of this playlist.", 4000);
                         else hideStatusNow();
+                        autoPlay();
                         startEpg(hdr[0], gen);
                     }
                 });
             }
         }, "playlist").start();
+    }
+
+    private Channel byUrl(String u) {
+        if (u == null) return null;
+        for (Channel c : all) if (c.url.equals(u)) return c;
+        return null;
+    }
+
+    /** Start playing without the user doing anything: keep the current channel if it is in this list, else last watched, else first. */
+    private void autoPlay() {
+        if (shown.isEmpty()) return;
+        if (current != null && byUrl(current.url) != null) return;
+        Channel t = kids ? null : byUrl(Prefs.sp(this).getString("last_ch_url", null));
+        if (t == null || !shown.contains(t)) t = shown.get(0);
+        play(t);
     }
 
     private void startEpg(String headerUrl, final int gen) {
@@ -246,7 +323,7 @@ public class IptvActivity extends Activity {
                     ui.post(new Runnable() { public void run() {
                         if (destroyed || gen != loadGen) return;
                         epg = m; chAdapter.notifyDataSetChanged();
-                        if (current != null) showInfo(current);
+                        if (current != null && infoBar.getVisibility() == View.VISIBLE) showInfo(current);
                     } });
                 } catch (Throwable t) { /* EPG is optional; ignore */ }
             }
@@ -272,12 +349,28 @@ public class IptvActivity extends Activity {
         catAdapter.notifyDataSetChanged();
     }
 
-    private void applyFilter() {
+    private static boolean nameMatches(Channel c, String q) {
+        if (q.isEmpty()) return true;
+        String n = c.name.toLowerCase(Locale.ROOT);
+        for (String part : q.split("\\|")) {
+            part = part.trim();
+            if (!part.isEmpty() && n.contains(part)) return true;
+        }
+        return false;
+    }
+
+    private void fill(String q) {
         shown.clear();
         for (Channel c : all) {
             boolean ok = catSel.equals(FAV) ? favs.contains(c.url) : (catSel.isEmpty() || c.group.equals(catSel));
-            if (ok && (query.isEmpty() || c.name.toLowerCase(Locale.ROOT).contains(query))) shown.add(c);
+            if (ok && nameMatches(c, q)) shown.add(c);
         }
+    }
+
+    private void applyFilter() {
+        fill(query.isEmpty() ? presetFilter : query);
+        // a caller's filter must never leave the list empty: fall back to the whole category
+        if (shown.isEmpty() && query.isEmpty() && !presetFilter.isEmpty()) fill("");
         chAdapter.notifyDataSetChanged();
         catAdapter.notifyDataSetChanged();
     }
@@ -304,8 +397,8 @@ public class IptvActivity extends Activity {
             player.setVideoSurfaceView(surface);
             player.addListener(new Player.Listener() {
                 @Override public void onPlaybackStateChanged(int s) {
-                    if (s == Player.STATE_BUFFERING) showStatus("Buffering\u2026", 0);
-                    else if (s == Player.STATE_READY) { retries = 0; hideStatusNow(); }
+                    if (s == Player.STATE_BUFFERING) showStatus("Buffering…", 0);
+                    else if (s == Player.STATE_READY) { retries = 0; skipCount = 0; hideStatusNow(); }
                 }
                 @Override public void onPlayerError(PlaybackException e) {
                     ExoPlayer p = player;
@@ -319,12 +412,19 @@ public class IptvActivity extends Activity {
                         startPlayback(current);
                     } else if (current != null && retries < MAX_RETRIES) {
                         retries++;
-                        showStatus("Connection lost - retrying (" + retries + "/" + MAX_RETRIES + ")\u2026", 0);
+                        showStatus("Connection lost - retrying (" + retries + "/" + MAX_RETRIES + ")…", 0);
                         ui.removeCallbacks(retryRun);
                         ui.postDelayed(retryRun, 2000L * retries);
+                    } else if (skipCount < MAX_SKIP && shown.size() > 1) {
+                        // dead channel: move on by itself so the screen is never stuck on a broken stream
+                        skipCount++;
+                        showStatus("Channel unavailable - trying the next one…", 0);
+                        ui.removeCallbacks(skipRun);
+                        ui.postDelayed(skipRun, 1200);
                     } else {
-                        showStatus("This stream is offline or cannot be played on this device (" + e.getErrorCodeName()
-                                + "). Press CH+/CH- or OK to pick another channel.", 8000);
+                        showStatus("No working channel found right now (" + e.getErrorCodeName()
+                                + "). Pick another channel or check the internet.", 8000);
+                        showPanel();
                     }
                 }
             });
@@ -337,16 +437,19 @@ public class IptvActivity extends Activity {
         everStarted = true;
         retries = 0;
         forceHls = false;
+        if (!autoSkipping) skipCount = 0;
         ui.removeCallbacks(retryRun);
+        ui.removeCallbacks(skipRun);
+        if (!kids) Prefs.sp(this).edit().putString("last_ch_url", ch.url).putString("last_ch_name", ch.name).apply();
         startPlayback(ch);
         hidePanel();
         showInfo(ch);
     }
 
     private void startPlayback(Channel ch) {
-        showStatus("Loading " + ch.name + "\u2026", 0);
+        showStatus("Loading " + ch.name + "…", 0);
         ExoPlayer p = ensurePlayer();
-        java.util.Map<String, String> hdr = new HashMap<>();
+        Map<String, String> hdr = new HashMap<>();
         if (!ch.referer.isEmpty()) hdr.put("Referer", ch.referer);
         httpFactory.setDefaultRequestProperties(hdr);
         httpFactory.setUserAgent(ch.ua.isEmpty() ? UA : ch.ua);
@@ -372,7 +475,13 @@ public class IptvActivity extends Activity {
     }
 
     // ---------- overlays ----------
-    private void showPanel() { panel.setVisibility(View.VISIBLE); chList.requestFocus(); }
+    private void showPanel() {
+        panel.setVisibility(View.VISIBLE);
+        infoBar.setVisibility(View.GONE);
+        int i = shown.indexOf(current);
+        if (i >= 0) chList.setSelection(i);
+        chList.requestFocus();
+    }
     private void hidePanel() { panel.setVisibility(View.GONE); }
 
     private void showStatus(String s, long hideAfter) {
@@ -383,20 +492,42 @@ public class IptvActivity extends Activity {
     }
     private void hideStatusNow() { ui.removeCallbacks(hideStatus); status.setVisibility(View.GONE); }
 
-    private void showInfo(Channel c) {
-        StringBuilder sb = new StringBuilder(c.name);
+    private void showInfo(final Channel c) {
+        int n = shown.indexOf(c);
+        if (n < 0) n = all.indexOf(c);
+        infoNum.setText(String.valueOf(n + 1));
+        infoName.setText(c.name);
+        StringBuilder sb = new StringBuilder();
         EpgLoader.Epg e = epg.get(c.tvgId);
         if (e != null) {
-            if (e.now != null && e.nowStop > System.currentTimeMillis()) sb.append("\nNow: ").append(e.now);
-            if (e.next != null) sb.append("\nNext: ").append(e.next);
+            if (e.now != null && e.nowStop > System.currentTimeMillis()) sb.append("Now: ").append(e.now);
+            if (e.next != null) sb.append(sb.length() > 0 ? "\n" : "").append("Next: ").append(e.next);
         }
-        info.setText(sb.toString());
-        info.setVisibility(View.VISIBLE);
+        if (sb.length() == 0) sb.append(c.group);
+        infoEpg.setText(sb.toString());
+        infoLogo.setImageDrawable(null);
+        infoLogo.setTag(c.logo);
+        infoLogo.setVisibility(View.GONE);
+        Bitmap b = c.logo.isEmpty() ? null : LogoLoader.peek(c.logo);
+        if (b != null) { infoLogo.setImageBitmap(b); infoLogo.setVisibility(View.VISIBLE); }
+        else if (!c.logo.isEmpty()) {
+            LogoLoader.load(c.logo, Util.px(150), new LogoLoader.Cb() {
+                public boolean wanted() { return !destroyed && c.logo.equals(infoLogo.getTag()); }
+                public void done(Bitmap bm) { infoLogo.setImageBitmap(bm); infoLogo.setVisibility(View.VISIBLE); }
+            });
+        }
+        infoBar.setVisibility(panel.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
         ui.removeCallbacks(hideInfo);
         ui.postDelayed(hideInfo, 5000);
     }
 
     // ---------- remote keys ----------
+    private static int digitOf(int k) {
+        if (k >= KeyEvent.KEYCODE_0 && k <= KeyEvent.KEYCODE_9) return k - KeyEvent.KEYCODE_0;
+        if (k >= KeyEvent.KEYCODE_NUMPAD_0 && k <= KeyEvent.KEYCODE_NUMPAD_9) return k - KeyEvent.KEYCODE_NUMPAD_0;
+        return -1;
+    }
+
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
         boolean on = panel.getVisibility() == View.VISIBLE;
@@ -414,11 +545,13 @@ public class IptvActivity extends Activity {
         }
         if (e.getAction() != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(e);
         if (k == KeyEvent.KEYCODE_BACK && on && current != null) { hidePanel(); return true; }
+        if (k == 284 /* KEYCODE_ALL_APPS, the remote's "apps" button */ || k == KeyEvent.KEYCODE_APP_SWITCH) { finish(); return true; }
         if (k == KeyEvent.KEYCODE_MENU || k == KeyEvent.KEYCODE_INFO || k == KeyEvent.KEYCODE_PROG_YELLOW) {
             if (kids) { if (on && current != null) hidePanel(); else showPanel(); }
             else showSourceMenu();
             return true;
         }
+        if (k == KeyEvent.KEYCODE_GUIDE) { if (on && current != null) hidePanel(); else showPanel(); return true; }
         if (k == KeyEvent.KEYCODE_PROG_RED) {
             Channel t = current;
             if (on) { int p = chList.getSelectedItemPosition(); t = (p >= 0 && p < shown.size()) ? shown.get(p) : null; }
@@ -432,6 +565,17 @@ public class IptvActivity extends Activity {
         if (k == KeyEvent.KEYCODE_MEDIA_PAUSE && player != null) { player.setPlayWhenReady(false); return true; }
         if (k == KeyEvent.KEYCODE_MEDIA_STOP) { finish(); return true; }
         if (!on) {
+            int d = digitOf(k);
+            if (d >= 0) {
+                if (numBuf.length() >= 4) numBuf.setLength(0);
+                numBuf.append(d);
+                numTv.setText(numBuf.toString());
+                numTv.setVisibility(View.VISIBLE);
+                ui.removeCallbacks(numCommit);
+                ui.postDelayed(numCommit, 1600);
+                return true;
+            }
+            if (ok && numBuf.length() > 0) { ui.removeCallbacks(numCommit); numCommit.run(); return true; }
             switch (k) {
                 case KeyEvent.KEYCODE_DPAD_UP: zap(-1); return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN: zap(1); return true;
@@ -452,25 +596,27 @@ public class IptvActivity extends Activity {
         final int n = PRESETS.length;
         final String custom = Prefs.sp(this).getString("custom_url", "");
         final boolean hasXt = !Prefs.sp(this).getString("xt_server", "").isEmpty();
-        labels.add("My playlist (M3U / M3U8 URL or file path)\u2026");
-        labels.add(hasXt ? "Xtream Codes login (edit)\u2026" : "Xtream Codes login\u2026");
-        labels.add("Set EPG / XMLTV guide URL\u2026");
+        labels.add("My playlist (M3U / M3U8 URL or file path)…");
+        labels.add(hasXt ? "Xtream Codes login (edit)…" : "Xtream Codes login…");
+        labels.add("Set EPG / XMLTV guide URL…");
         labels.add("Reload current playlist");
+        labels.add("Exit to apps");
         Util.dialog(this).setTitle("Live TV sources")
                 .setItems(labels.toArray(new String[0]), (d, w) -> {
                     if (w < n) loadSource(PRESETS[w][0], PRESETS[w][1]);
-                    else if (w == n) Util.prompt(this, "M3U / M3U8 playlist", "http://\u2026/playlist.m3u", custom, s -> {
+                    else if (w == n) Util.prompt(this, "M3U / M3U8 playlist", "http://…/playlist.m3u", custom, s -> {
                         if (s.isEmpty()) return;
                         Prefs.sp(this).edit().putString("custom_url", s).apply();
                         loadSource("My playlist", s);
                     });
                     else if (w == n + 1) xtreamDialog();
-                    else if (w == n + 2) Util.prompt(this, "EPG (XMLTV) URL", "http://\u2026/epg.xml or .xml.gz",
+                    else if (w == n + 2) Util.prompt(this, "EPG (XMLTV) URL", "http://…/epg.xml or .xml.gz",
                             Prefs.sp(this).getString("epg_url", ""), s -> {
                                 Prefs.sp(this).edit().putString("epg_url", s).apply();
                                 loadSource(srcName, srcUrl);
                             });
-                    else if (srcUrl != null) loadSource(srcName, srcUrl);
+                    else if (w == n + 3) { if (srcUrl != null) loadSource(srcName, srcUrl); }
+                    else finish();
                 }).setNegativeButton("Close", null).show();
     }
 
@@ -487,7 +633,7 @@ public class IptvActivity extends Activity {
                     String sv = s.getText().toString().trim();
                     while (sv.endsWith("/")) sv = sv.substring(0, sv.length() - 1);
                     String us = u.getText().toString().trim(), pw = p.getText().toString().trim();
-                    if (!sv.startsWith("http") || us.isEmpty()) { Toast.makeText(this, "Enter server (http://\u2026) and username", Toast.LENGTH_LONG).show(); return; }
+                    if (!sv.startsWith("http") || us.isEmpty()) { Toast.makeText(this, "Enter server (http://…) and username", Toast.LENGTH_LONG).show(); return; }
                     try {
                         String q = "username=" + URLEncoder.encode(us, "UTF-8") + "&password=" + URLEncoder.encode(pw, "UTF-8");
                         Prefs.sp(this).edit().putString("xt_server", sv).putString("xt_user", us).putString("xt_pass", pw)
@@ -514,6 +660,7 @@ public class IptvActivity extends Activity {
     @Override protected void onStop() {
         super.onStop();
         ui.removeCallbacks(retryRun);
+        ui.removeCallbacks(skipRun);
         if (player != null) { player.release(); player = null; } // free decoder + RAM when not visible
     }
 
@@ -535,20 +682,28 @@ public class IptvActivity extends Activity {
             if (t == null) {
                 t = new TextView(IptvActivity.this);
                 t.setSingleLine(true);
-                t.setPadding(Util.px(30), Util.px(18), Util.px(10), Util.px(18));
-                t.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(30));
+                t.setPadding(Util.px(24), Util.px(18), Util.px(10), Util.px(18));
+                t.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(28));
             }
             String k = catKeys.get(i);
             String txt;
             if (k.equals(FAV)) txt = FAV + " (" + favCount() + ")";
             else if (k.isEmpty()) txt = "All channels (" + all.size() + ")";
             else txt = k + " (" + catCounts.get(k) + ")";
+            boolean sel = k.equals(catSel);
             t.setText(txt);
-            t.setTextColor(k.equals(catSel) ? Color.WHITE : 0xFF9A9AA0);
-            t.setTypeface(null, k.equals(catSel) ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            t.setTextColor(sel ? Color.WHITE : 0xFFA5A8B8);
+            t.setTypeface(Typeface.create("sans-serif-medium", sel ? Typeface.BOLD : Typeface.NORMAL));
+            t.setBackground(sel ? selBg.getConstantState().newDrawable() : null);
             return t;
         }
         private int favCount() { int n = 0; for (Channel c : all) if (favs.contains(c.url)) n++; return n; }
+    }
+
+    private static final class Row {
+        TextView num, name, sub, letter;
+        FrameLayout box;
+        ImageView logo;
     }
 
     private final class ChannelAdapter extends BaseAdapter {
@@ -556,27 +711,80 @@ public class IptvActivity extends Activity {
         public Object getItem(int i) { return shown.get(i); }
         public long getItemId(int i) { return i; }
         public View getView(int i, View v, ViewGroup parent) {
+            final Row h;
             LinearLayout row;
-            TextView[] tv;
             if (v == null) {
                 row = new LinearLayout(IptvActivity.this);
-                row.setOrientation(LinearLayout.VERTICAL);
-                row.setPadding(Util.px(24), Util.px(12), Util.px(16), Util.px(12));
-                TextView n = new TextView(IptvActivity.this), s = new TextView(IptvActivity.this);
-                n.setSingleLine(true); s.setSingleLine(true);
-                n.setTextColor(Color.WHITE); s.setTextColor(0xFF9A9AA0);
-                n.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(30));
-                s.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(22));
-                row.addView(n); row.addView(s);
-                tv = new TextView[]{n, s};
-                row.setTag(tv);
-            } else { row = (LinearLayout) v; tv = (TextView[]) row.getTag(); }
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(Util.px(14), Util.px(10), Util.px(14), Util.px(10));
+                h = new Row();
+                h.num = new TextView(IptvActivity.this);
+                h.num.setTextColor(0xFF8A8DA0);
+                h.num.setGravity(Gravity.CENTER);
+                h.num.setSingleLine(true);
+                h.num.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(24));
+                row.addView(h.num, new LinearLayout.LayoutParams(Util.px(66), -2));
+                h.box = new FrameLayout(IptvActivity.this);
+                h.letter = new TextView(IptvActivity.this);
+                h.letter.setGravity(Gravity.CENTER);
+                h.letter.setTextColor(Color.WHITE);
+                h.letter.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+                h.letter.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(34));
+                h.box.addView(h.letter, new FrameLayout.LayoutParams(-1, -1));
+                h.logo = new ImageView(IptvActivity.this);
+                h.logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                h.logo.setPadding(Util.px(6), Util.px(6), Util.px(6), Util.px(6));
+                h.box.addView(h.logo, new FrameLayout.LayoutParams(-1, -1));
+                LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(Util.px(100), Util.px(64));
+                bl.leftMargin = Util.px(6);
+                bl.rightMargin = Util.px(20);
+                row.addView(h.box, bl);
+                LinearLayout col = new LinearLayout(IptvActivity.this);
+                col.setOrientation(LinearLayout.VERTICAL);
+                h.name = new TextView(IptvActivity.this);
+                h.sub = new TextView(IptvActivity.this);
+                h.name.setSingleLine(true); h.sub.setSingleLine(true);
+                h.name.setTextColor(Color.WHITE); h.sub.setTextColor(0xFF9A9DB0);
+                h.name.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(29));
+                h.sub.setTextSize(TypedValue.COMPLEX_UNIT_PX, Util.px(21));
+                col.addView(h.name); col.addView(h.sub);
+                row.addView(col, new LinearLayout.LayoutParams(0, -2, 1f));
+                row.setTag(h);
+            } else { row = (LinearLayout) v; h = (Row) row.getTag(); }
+
             Channel c = shown.get(i);
-            tv[0].setText((favs.contains(c.url) ? "\u2605 " : "") + c.name);
+            h.num.setText(String.valueOf(i + 1));
+            h.name.setText((favs.contains(c.url) ? "★ " : "") + c.name);
             EpgLoader.Epg e = epg.get(c.tvgId);
-            String sub = (e != null && e.now != null && e.nowStop > System.currentTimeMillis()) ? "Now: " + e.now : c.group;
-            tv[1].setText(sub);
+            h.sub.setText((e != null && e.now != null && e.nowStop > System.currentTimeMillis()) ? "Now: " + e.now : c.group);
+
+            // logo (loaded lazily) or a coloured initial badge
+            String initial = "?";
+            for (int k = 0; k < c.name.length(); k++) {
+                if (Character.isLetterOrDigit(c.name.charAt(k))) { initial = String.valueOf(c.name.charAt(k)).toUpperCase(Locale.ROOT); break; }
+            }
+            final String lu = c.logo;
+            h.logo.setTag(lu);
+            h.logo.setImageDrawable(null);
+            h.letter.setText(initial);
+            h.letter.setVisibility(View.VISIBLE);
+            h.box.setBackground(Util.round(BADGE[(c.name.hashCode() & 0x7fffffff) % BADGE.length], Util.px(12)));
+            if (!lu.isEmpty()) {
+                Bitmap b = LogoLoader.peek(lu);
+                if (b != null) useLogo(h, b);
+                else LogoLoader.load(lu, Util.px(100), new LogoLoader.Cb() {
+                    public boolean wanted() { return !destroyed && lu.equals(h.logo.getTag()); }
+                    public void done(Bitmap bm) { useLogo(h, bm); }
+                });
+            }
             return row;
+        }
+
+        private void useLogo(Row h, Bitmap b) {
+            h.logo.setImageBitmap(b);
+            h.letter.setVisibility(View.GONE);
+            h.box.setBackground(Util.round(0x30FFFFFF, Util.px(12)));
         }
     }
 }

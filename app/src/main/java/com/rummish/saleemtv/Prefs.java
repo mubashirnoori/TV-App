@@ -32,6 +32,19 @@ final class Prefs {
         return added;
     }
 
+    // ---- "On power-up open": iptv (Live TV) | digital (Digital TV app) | home (stay on the home screen)
+    static String startLabel(String s) {
+        if ("digital".equals(s)) return "Digital TV";
+        if ("home".equals(s)) return "Home screen only";
+        return "Live TV";
+    }
+
+    static String nextStart(String cur, boolean digitalAvailable) {
+        if ("iptv".equals(cur)) return digitalAvailable ? "digital" : "home";
+        if ("digital".equals(cur)) return "home";
+        return "iptv";
+    }
+
     static void pushRecent(Context c, String id) {
         List<String> l = list(c, "recent");
         l.remove(id);

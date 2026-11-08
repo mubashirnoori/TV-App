@@ -28,7 +28,9 @@ final class TileView extends LinearLayout {
 
         int ch = Math.round(w * 0.58f);
         FrameLayout card = new FrameLayout(c);
-        bg = Util.round(color, Util.px(30));
+        bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Util.mix(color, Color.WHITE, 0.16f), color});
+        bg.setCornerRadius(Util.px(38));
         card.setBackground(bg);
         addView(card, new LayoutParams(w, ch));
 
